@@ -1,0 +1,6 @@
+venv/
+recordings/
+.env
+__pycache__/
+*.pyc
+yolo11n.pt
