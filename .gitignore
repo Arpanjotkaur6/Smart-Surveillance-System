@@ -4,3 +4,4 @@ recordings/
 __pycache__/
 *.pyc
 yolo11n.pt
+surveillance.db
