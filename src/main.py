@@ -22,6 +22,18 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 # Load the YOLO model
 model = YOLO(str(PROJECT_ROOT / "yolo11n.pt"))
 logged_track_ids = set()
+ANIMAL_CLASSES = {
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+}
 
 # Open the webcam
 camera = cv2.VideoCapture(0)
@@ -81,6 +93,12 @@ try:
         for box in results[0].boxes:
             class_id = int(box.cls[0])
             object_type = model.names[class_id]
+            if object_type == "person":
+                category = "person"
+            elif object_type in ANIMAL_CLASSES:
+                category = "animal"
+            else:
+                category = "other"
         
             track_id = (
                 int(box.id[0])
@@ -97,7 +115,7 @@ try:
                     track_id=track_id,
                     confidence=confidence,
                     camera_id="camera_1",
-                    details="First detection of this tracked object"
+                    details=f"Category: {category}; First detection of this tracked object"
                 )
         
                 logged_track_ids.add(track_id)
