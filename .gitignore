@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 yolo11n.pt
 surveillance.db
+node_modules/
+dist/
+.vite/

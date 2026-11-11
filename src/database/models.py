@@ -36,6 +36,31 @@ def create_tables():
         )
     """)
 
+    # Store authorized people and their face embeddings
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS authorized_persons (
+            person_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_name TEXT NOT NULL,
+            face_embedding BLOB NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    
+    # Store administrator login credentials
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS administrators (
+            admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    
+   
+
+
     connection.commit()
     connection.close()
 

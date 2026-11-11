@@ -1,10 +1,11 @@
-
 from queries import (
     save_event,
     get_recent_events,
     get_event_counts,
-    answer_surveillance_query
+    answer_surveillance_query,
+    get_category_counts
 )
+
 from database import get_connection
 from pathlib import Path
 import sys
@@ -64,3 +65,8 @@ print(answer_surveillance_query("Show recent events"))
 
 print("\nNLP Query Test 3:")
 print(answer_surveillance_query("What is the weather today?"))    
+
+print("\nCounts by category:")
+
+for item in get_category_counts():
+    print(f"{item['category']}: {item['total']}")
