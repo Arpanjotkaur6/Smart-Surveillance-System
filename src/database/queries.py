@@ -137,6 +137,9 @@ def get_category_counts():
                 END AS category,
                 COUNT(*) AS total
             FROM surveillance_events
+            WHERE
+                object_type != 'person'
+                OR details = 'Person newly appeared in camera view'
             GROUP BY category
             ORDER BY total DESC
             """
@@ -146,6 +149,7 @@ def get_category_counts():
 
     finally:
         connection.close()
+
 
 def get_animal_counts():
     print("DEBUG: get_animal_counts() function called!")

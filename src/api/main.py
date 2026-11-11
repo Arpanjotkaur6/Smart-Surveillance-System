@@ -18,6 +18,7 @@ from database.queries import (
     get_recent_events,
     get_event_counts,
     get_category_counts,
+    get_event_type_counts,
     answer_surveillance_query
 )
 from nlp.llm import ask_gemma
@@ -212,7 +213,8 @@ def get_statistics():
 
     return {
         "object_counts": get_event_counts(),
-        "category_counts": get_category_counts()
+        "category_counts": get_category_counts(),
+        "unknown_person_count": get_event_type_counts("unknown_person")
     }
 
 

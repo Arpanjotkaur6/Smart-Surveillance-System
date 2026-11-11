@@ -21,7 +21,8 @@ const navigation = [
 function App() {
   const [apiStats, setApiStats] = useState({
     object_counts: [],
-    category_counts: []
+    category_counts: [],
+    unknown_person_count: 0
   });
   const [recentEvents, setRecentEvents] = useState([]);
   const [videoCount, setVideoCount] = useState(0);
@@ -269,7 +270,7 @@ const stats = [
   },
   {
     title: "Unknown Person Events",
-    value: "N/A",
+    value: apiStats.unknown_person_count,
     icon: CircleAlert,
     color: "#ef4444"
   },
