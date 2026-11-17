@@ -1,10 +1,23 @@
 
 import sys
+import os
 import cv2
+import time
 
 from datetime import datetime
 from pathlib import Path
 from ultralytics import YOLO
+from email_service import send_alert_email
+from database.email_manager import get_verified_recipients
+
+OPENCV_DLL_DIR = os.path.join(
+    os.path.dirname(cv2.__file__)
+)
+
+if hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(OPENCV_DLL_DIR)
+
+os.environ["PATH"] = OPENCV_DLL_DIR + os.pathsep + os.environ["PATH"]
 
 
 # --------------------------------------------------
@@ -174,12 +187,12 @@ video_path = (
     f"surveillance_{timestamp}.mp4"
 )
 
-fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+fourcc = cv2.VideoWriter_fourcc(*"avc1")
 
 writer = cv2.VideoWriter(
     str(video_path),
     fourcc,
-    fps,
+    2.6,
     (width, height)
 )
 
@@ -277,6 +290,7 @@ try:
                     print(
                         f"Person detected: Track ID: {track_id}"
                     )
+                    
 
                 person_last_seen[track_id] = frame_count
                 
@@ -444,8 +458,8 @@ try:
 
                     # Check whether this is a new appearance
                     if (
-                        unknown_last_seen is None
-                        or current_time - unknown_last_seen
+                        unknown_person_last_seen is None
+                        or current_time - unknown_person_last_seen
                         > UNKNOWN_PRESENCE_TIMEOUT_SECONDS
                     ):
 
@@ -457,8 +471,27 @@ try:
                         )
 
                         print("New unknown-person appearance logged.")
+                        # Send alert emails to verified recipients
+                        try:
+                            recipients = get_verified_recipients()
 
-                    unknown_last_seen = current_time
+                            for recipient in recipients:
+                                send_alert_email(
+                                    recipient["email"],
+                                    "Unknown Person Detected - Smart Surveillance",
+                                    (
+                                        "An unknown person was detected!\n\n"
+                                        f"Time: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                        "Camera: camera_1\n"
+                                        f"Confidence: {similarity:.2f}"
+                                    )
+                                )
+
+                        except Exception as error:
+                            print(f"Email alert error: {error}")
+
+
+                    unknown_person_last_seen = current_time
 
                 else:
 

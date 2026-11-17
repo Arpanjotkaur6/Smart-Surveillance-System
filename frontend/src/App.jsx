@@ -26,6 +26,12 @@ function App() {
   });
   const [recentEvents, setRecentEvents] = useState([]);
   const [videoCount, setVideoCount] = useState(0);
+  const [videos, setVideos] = useState([]);
+  const [admin2FAToken, setAdmin2FAToken] = useState("");
+  const [deletingVideoId, setDeletingVideoId] = useState(null);
+  const [deleteAdminUsername, setDeleteAdminUsername] = useState("");
+  const [deleteAdminPassword, setDeleteAdminPassword] = useState("");
+  const [deleteAdminCode, setDeleteAdminCode] = useState("");
   const [persons, setPersons] = useState([]);
   const [personLoading, setPersonLoading] = useState(false);
   const [personError, setPersonError] = useState("");
@@ -39,8 +45,84 @@ function App() {
   const [capturedImage, setCapturedImage] = useState("");
   const [registrationLoading, setRegistrationLoading] = useState(false);
   const videoRef = useRef(null);
+  // Unknown-person buzzer
+  const [alarmActive, setAlarmActive] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+
+  const audioContextRef = useRef(null);
+  const alarmIntervalRef = useRef(null);
+  const lastUnknownEventIdRef = useRef(null);
+  // Enable browser audio after user interaction
+const enableAlarmAudio = async () => {
+  try {
+    const AudioContextClass =
+      window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+      alert("Your browser does not support alarm audio.");
+      return;
+    }
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    await audioContextRef.current.resume();
+    setAudioEnabled(true);
+
+  } catch (error) {
+    console.error("Audio initialization error:", error);
+  }
+};
 
 
+// Stop the alarm
+const stopAlarm = () => {
+  if (alarmIntervalRef.current) {
+    clearInterval(alarmIntervalRef.current);
+    alarmIntervalRef.current = null;
+  }
+
+  setAlarmActive(false);
+};
+
+// Play repeating buzzer when an unknown person is detected
+useEffect(() => {
+  if (!alarmActive || !audioEnabled || !audioContextRef.current) {
+    return;
+  }
+
+  const playBeep = () => {
+    const context = audioContextRef.current;
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = "square";
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+
+    gain.gain.setValueAtTime(0.15, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      context.currentTime + 0.25
+    );
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.25);
+  };
+
+  playBeep();
+
+  alarmIntervalRef.current = setInterval(playBeep, 700);
+
+  return () => {
+    clearInterval(alarmIntervalRef.current);
+    alarmIntervalRef.current = null;
+  };
+}, [alarmActive, audioEnabled]);
 
 
 const [apiStatus, setApiStatus] = useState("Connecting...");
@@ -51,7 +133,7 @@ useEffect(() => {
       const [statsResponse, eventsResponse, videosResponse] =
         await Promise.all([
           fetch("http://127.0.0.1:8000/api/statistics"),
-          fetch("http://127.0.0.1:8000/api/events?limit=5"),
+          fetch("http://127.0.0.1:8000/api/events?limit=50"),
           fetch("http://127.0.0.1:8000/api/videos")
         ]);
 
@@ -66,8 +148,37 @@ useEffect(() => {
       ]);
 
       setApiStats(statsData);
-      setRecentEvents(eventsData.events);
+      const dashboardEvents = eventsData.events || [];
+
+      const newestEventId = dashboardEvents.reduce(
+        (max, event) => Math.max(max, Number(event.event_id) || 0),
+        0
+      );
+
+      // First fetch: remember existing events without triggering an alarm
+      if (lastUnknownEventIdRef.current === null) {
+        lastUnknownEventIdRef.current = newestEventId;
+      } else {
+
+        // Check for a newly recorded unknown person
+        const newUnknownEvent = dashboardEvents.find(
+          event =>
+            event.event_type === "unknown_person" &&
+            Number(event.event_id) > lastUnknownEventIdRef.current
+        );
+
+        if (newUnknownEvent) {
+          setAlarmActive(true);
+        }
+
+        if (newestEventId > lastUnknownEventIdRef.current) {
+          lastUnknownEventIdRef.current = newestEventId;
+        }
+      }
+
+      setRecentEvents(dashboardEvents);
       setVideoCount(videosData.total_videos);
+      setVideos(videosData.videos || []);
       setApiStatus("Connected");
 
     } catch (error) {
@@ -139,6 +250,111 @@ const handleAdminLogin = async (e) => {
   await loadPersons(credentials);
 
   setAdminPassword("");
+};
+
+const requestDeleteOtp = async (e) => {
+  e.preventDefault();
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/api/admin/2fa/request",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username: deleteAdminUsername.trim(),
+          password: deleteAdminPassword
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Unable to send OTP.");
+    }
+
+    setDeleteAdminPassword("");
+    alert("OTP sent to your registered administrator email.");
+  } catch (error) {
+    alert(error.message);
+  }
+};
+
+const verifyDeleteOtp = async (e) => {
+  e.preventDefault();
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/api/admin/2fa/verify",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username: deleteAdminUsername.trim(),
+          code: deleteAdminCode.trim()
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "OTP verification failed.");
+    }
+
+    setAdmin2FAToken(data.access_token);
+    setDeleteAdminCode("");
+    alert("Administrator verified. Video deletion is enabled.");
+  } catch (error) {
+    alert(error.message);
+  }
+};
+const handleDeleteVideo = async (video) => {
+  const confirmed = window.confirm(
+    "Are you sure you want to permanently delete this recording?"
+  );
+
+  if (!confirmed) return;
+
+  setDeletingVideoId(video.video_id);
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:8000/api/videos/${video.video_id}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${admin2FAToken}`
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        setAdmin2FAToken("");
+      }
+      throw new Error(data.detail || "Unable to delete recording.");
+    }
+
+    setVideos((prev) =>
+      prev.filter((item) => item.video_id !== video.video_id)
+    );
+
+    setVideoCount((prev) => Math.max(0, prev - 1));
+
+    alert("Recording deleted successfully.");
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    setDeletingVideoId(null);
+  }
 };
 
 const startCamera = async () => {
@@ -527,6 +743,50 @@ const stopSpeaking = () => {
                   ? "Backend Disconnected"
                   : "Connecting..."}
             </div>
+          </div>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 20
+          }}>
+            {!audioEnabled && (
+              <button
+                onClick={enableAlarmAudio}
+                style={{
+                  padding: "10px 16px",
+                  background: "#4f46e5",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 7,
+                  cursor: "pointer"
+                }}
+              >
+                Enable Alarm Sound
+              </button>
+            )}
+
+            {audioEnabled && (
+              <span style={{ color: "#15803d", fontSize: 13 }}>
+                Alarm sound enabled
+              </span>
+            )}
+
+            {alarmActive && (
+              <button
+                onClick={stopAlarm}
+                style={{
+                  padding: "10px 16px",
+                  background: "#dc2626",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 7,
+                  cursor: "pointer"
+                }}
+              >
+                Stop Alarm
+              </button>
+            )}
           </div>
 
           <div className="stats">
@@ -971,6 +1231,178 @@ const stopSpeaking = () => {
                 <p style={{ color: "#dc2626", marginTop: 15, fontSize: 13 }}>
                   {personError}
                 </p>
+              )}
+            </section>
+          )}
+          {active === "Live Monitoring" && (
+  <section className="card">
+    <div className="section-title">
+      <h3>
+        <Camera size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
+        Live Camera Monitoring
+      </h3>
+      <span className="link">Camera 01</span>
+    </div>
+
+    <div className="monitor" style={{ height: 450 }}>
+      <Camera size={48} />
+      <p>Camera detection is running separately.</p>
+      <small>
+        Live camera feed is not currently connected to the dashboard.
+      </small>
+    </div>
+  </section>
+)}
+
+            {active === "Video Recordings" && (
+            <section className="card">
+            <div style={{ marginBottom: 25 }}>
+  <h3>Authorize Video Deletion</h3>
+
+  {admin2FAToken ? (
+    <p style={{ color: "#15803d", fontSize: 13 }}>
+      ✓ Administrator verified. Video deletion is enabled.
+    </p>
+  ) : (
+    <>
+      <p className="muted">
+        Enter administrator credentials and verify the email OTP.
+      </p>
+
+      <form
+        onSubmit={requestDeleteOtp}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          marginTop: 15
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Administrator username"
+          value={deleteAdminUsername}
+          onChange={(e) => setDeleteAdminUsername(e.target.value)}
+          required
+          style={{ padding: 11, border: "1px solid #dce1eb", borderRadius: 7 }}
+        />
+
+        <input
+          type="password"
+          placeholder="Administrator password"
+          value={deleteAdminPassword}
+          onChange={(e) => setDeleteAdminPassword(e.target.value)}
+          required
+          style={{ padding: 11, border: "1px solid #dce1eb", borderRadius: 7 }}
+        />
+
+        <button type="submit">Send OTP</button>
+      </form>
+
+      <form
+        onSubmit={verifyDeleteOtp}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          marginTop: 12
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Enter 6-digit OTP"
+          value={deleteAdminCode}
+          onChange={(e) => setDeleteAdminCode(e.target.value)}
+          maxLength={6}
+          required
+          style={{ padding: 11, border: "1px solid #dce1eb", borderRadius: 7 }}
+        />
+
+        <button type="submit">Verify OTP</button>
+      </form>
+    </>
+  )}
+</div>
+
+              <div className="section-title">
+                <h3>Saved Surveillance Videos</h3>
+                <span className="muted">
+                  Total recordings: {videos.length}
+                </span>
+              </div>
+
+              {videos.length > 0 ? (
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+                  gap: 20
+                }}>
+                  {videos.map((video) => {
+                    const videoUrl =
+                      `http://127.0.0.1:8000/${video.file_path.replace(/\\/g, "/")}`;
+
+                    return (
+                      <div
+                        key={video.video_id}
+                        style={{
+                          background: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 10,
+                          padding: 15
+                        }}
+                      >
+                        <video
+                          controls
+                          preload="metadata"
+                          style={{
+                            width: "100%",
+                            borderRadius: 8,
+                            background: "#111827"
+                          }}
+                        >
+                          <source src={videoUrl} type="video/mp4" />
+                          Your browser does not support video playback.
+                        </video>
+
+                        <h4>Surveillance Recording</h4>
+
+                        <p className="muted">
+                          Camera: {video.camera_id}
+                        </p>
+
+                        <p className="muted">
+                          Date: {new Date(video.start_time).toLocaleString()}
+                        </p>
+
+                        <p className="muted">
+                          Duration: {Number(video.duration_seconds).toFixed(2)} seconds
+                        </p>
+                        {admin2FAToken && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteVideo(video)}
+                            disabled={deletingVideoId === video.video_id}
+                            style={{
+                              marginTop: 10,
+                              padding: "9px 15px",
+                              background: "#dc2626",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 7,
+                              cursor: "pointer"
+                            }}
+                          >
+                            {deletingVideoId === video.video_id
+                              ? "Deleting..."
+                              : "Delete Recording"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="muted">No saved recordings available.</p>
               )}
             </section>
           )}

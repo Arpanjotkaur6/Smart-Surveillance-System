@@ -59,6 +59,52 @@ def create_tables():
     """)
     
    
+    # Store administrator email recipients
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_email_recipients (
+            recipient_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            is_verified INTEGER DEFAULT 0,
+            is_primary INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # Store email verification codes
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS email_verification_codes (
+            code_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            attempts INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # Store administrator two-factor authentication codes
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_2fa_codes (
+            code_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            code_hash TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            is_used INTEGER DEFAULT 0,
+            attempts INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # Add attempts column to existing databases if missing
+    cursor.execute("PRAGMA table_info(admin_2fa_codes)")
+    columns = [row["name"] for row in cursor.fetchall()]
+
+    if "attempts" not in columns:
+        cursor.execute("""
+            ALTER TABLE admin_2fa_codes
+            ADD COLUMN attempts INTEGER DEFAULT 0
+        """)
+
 
 
     connection.commit()
